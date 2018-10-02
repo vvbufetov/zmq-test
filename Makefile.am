@@ -11,4 +11,4 @@ bin_PROGRAMS = test
 
 test_SOURCES = main.cpp
 
-test_LDADD = ${ZMQ_LIB}
+test_LDADD = ${ZMQ_LIBS}

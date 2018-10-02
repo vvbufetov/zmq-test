@@ -8,13 +8,13 @@ AC_CONFIG_HEADERS([config.h])
 
 # Checks for programs.
 AC_PROG_CXX
+AM_INIT_AUTOMAKE
 
 # Checks for libraries.
 AX_ZMQ(,,[AC_MSG_ERROR([*** ZMQ library is required! You may download it from the http://zeromq.org])])
 
 # Checks for header files.
 AC_CHECK_HEADERS([stdlib.h sys/time.h unistd.h])
-AC_CHECK_HEADER([zmq.hpp])
 
 # Checks for typedefs, structures, and compiler characteristics.
 AC_CHECK_HEADER_STDBOOL
