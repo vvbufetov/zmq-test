@@ -1,0 +1,29 @@
+Версия 2.
+
+
+    sender      - отправляет STDIN построчно через PUSH-сокет на сервер.
+    server      - принимает строки через PULL-сокет, рассылает по подпискам.
+    client      - оформляет подписку, выводит полученные строки в STDOUT.
+
+
+Запуск сервера.
+
+    server <publishing_port> <subscription_port>
+
+    ./server "ipc://server.ipc" "tcp://*:5555"
+
+
+Запуск отправителя.
+
+    sender <publishing_port>
+
+    ./sender "ipc://server.ipc"
+
+
+Запуск клиента.
+
+    client <subscription_port> <filter_string>
+
+    ./client "tcp://localhost:5555" "the"
+
+
