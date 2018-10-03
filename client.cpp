@@ -3,6 +3,7 @@
 
 #include "zmq.hpp"
 #include "zhelpers.hpp"
+#include "defs.h"
 
 //  This is our client task class.
 //  It connects to the server, and then sends a request for subscriptions.
@@ -30,7 +31,13 @@ public:
                 // 1000 milliseconds
                 zmq::poll(items, 1, 1000);
                 if (items[0].revents & ZMQ_POLLIN) {
-                    std::cout << s_recv(socket_) << "\n";
+                    std::string line = s_recv(socket_);
+                    if (line.compare((const char *)HEARTBEAT_MESSAGE) == 0) {
+                        std::cerr << "HB\n";
+                        s_send(socket_, filter_);
+                    } else {
+                        std::cout << s_recv(socket_) << "\n";
+                    }
                     retries = 5;
                 }
                 else if (--retries == 0) {

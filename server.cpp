@@ -14,8 +14,7 @@
 #include "zmq.hpp"
 #include "zhelpers.hpp"
 
-
-
+#include "defs.h"
 
 // This is simple worker server. It reads lines from ventilator socket,
 // checks subscription list and sends message copies to clients.
@@ -23,32 +22,67 @@
 
 class server_task {
     struct ClientId {
-        char id[256];
-        size_t size = 0;
+        uint8_t  data[256];
+        size_t   size = 0;
+
         ClientId() {};
+
         ClientId(const zmq::message_t & msg) {
             size = msg.size();
             if (!size) throw std::runtime_error("invalid id size");
             if (size > 256) size = 256;
-            memcpy(id, msg.data(), size);
+            memcpy(data, msg.data(), size);
         }
+
         void send(zmq::socket_t & socket, int flags_ = 0) {
-            zmq::message_t msg(id, size);
+            zmq::message_t msg(data, size);
             socket.send(msg, flags_);
+        }
+
+        const std::string str() const {
+            std::stringstream ss;
+            for (size_t i=0; i<size; i++) {
+                ss << std::hex << std::uppercase << std::setw(2)
+                   << (unsigned int)data[i];
+            }
+            return ss.str();
         }
     };
 
     struct Subscription {
-        bool active = false;
-        ClientId id;
+        bool        active = false;
+        ClientId    id;
         std::string filter;
+        int64_t     recv_time = 0;
+        int64_t     beat_time = 0;
+
         Subscription () {};
+
         Subscription(const ClientId & id_, const zmq::message_t & msg)
             : active(true),
               id(id_),
-              filter(std::string(static_cast<const char*>(msg.data()), msg.size())) {}
+              filter(std::string(static_cast<const char*>(msg.data()), msg.size()))
+        {
+            recv_time = beat_time = s_clock();
+        }
+
         bool match(const std::string & str) {
             return active && (str.find( filter ) != std::string::npos);
+        }
+
+        // checking for the last
+        bool expired (const int64_t now) {
+            return !active || (recv_time + SUBSCRIPTION_TIMEOUT < now);
+        }
+
+        void heartbeat (const int64_t now, zmq::socket_t & socket) {
+            if (active && (beat_time + HEARTBEAT_TIMEOUT < now)) {
+                std::cout << "[S] heartbeat to: " << id.str() << "\n";
+                // it's time to beat
+                id.send(socket, ZMQ_SNDMORE);
+                socket.send( HEARTBEAT_MESSAGE, 1 );
+                beat_time = now;
+            }
         }
     };
 
@@ -78,35 +112,46 @@ public:
             while (!s_interrupted) {
                 // 100 milliseconds
                 zmq::poll(items, 2, 100);
+                int64_t now = s_clock();
                 // frontend (from clients)
                 if (items[0].revents & ZMQ_POLLIN) {
                     // TODO: receive and prepare the subscription
-                    zmq::message_t id;
-                    frontend_.recv(&id);
-                    if (!id.more()) {
-                        std::cerr << "[S] invalid subscription: " << id << "\n";
+                    zmq::message_t id_msg;
+                    frontend_.recv(&id_msg);
+                    if (!id_msg.more()) {
+                        std::cerr << "[S] invalid subscription: " << id_msg << "\n";
                         continue;
                     }
                     zmq::message_t filter_msg;
                     frontend_.recv(&filter_msg);
-                    std::cout << "[S] subscripion: " << filter_msg << " from " << id << "\n";
-                    subs_[std::hash<std::string>()(id.str())] = Subscription(ClientId(id), filter_msg);
+
+                    ClientId id(id_msg);
+                    std::cout << "[S] subscripion: " << filter_msg << " from " << id.str() << "\n";
+                    subs_[std::hash<std::string>()(id.str())] = Subscription(id, filter_msg);
                 }
                 // backend (from ventilator)
                 else if (items[1].revents & ZMQ_POLLIN) {
-                    // TODO: filter and resend
                     std::string line = s_recv(backend_);
                     std::cout << "[S] line: " << line << "\n";
                     for (auto item : subs_) {
-                        if (item.second.match(line)) {
+                        if (item.second.match( line )) {
                             item.second.id.send(frontend_, ZMQ_SNDMORE);
                             s_send(frontend_, line);
                         }
+                        else {
+                            item.second.heartbeat(now, frontend_);
+                        }
                     }
                 }
-                // timeout
-                {
-                    // TODO: check subscriptions
+                for (auto it = subs_.begin(); it != subs_.end(); ++it) {
+                    if (it->second.expired( now )) {
+                        std::cout << "[S] expired: " << it->second.id.str() << "\n";
+                        subs_.erase( it );
+                    }
+                    else {
+                        it->second.heartbeat(now, frontend_);
+                    }
+
                 }
             }
         }
