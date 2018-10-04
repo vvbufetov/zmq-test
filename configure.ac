@@ -24,9 +24,10 @@ AC_TYPE_INT64_T
 AC_TYPE_SIZE_T
 AC_TYPE_UINT16_T
 AC_TYPE_UINT32_T
+AC_TYPE_UINT8_T
 
 # Checks for library functions.
-AC_CHECK_FUNCS([gettimeofday])
+AC_CHECK_FUNCS([gettimeofday socket])
 
 AC_CONFIG_FILES([Makefile])
 AC_OUTPUT

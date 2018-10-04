@@ -13,7 +13,7 @@ public:
     {}
 
     void start() {
-        frontend_.connect(connect_string_);
+        frontend_.bind(connect_string_);
         try {
             while (!std::cin.eof() && !s_interrupted) {
                 std::string line;
@@ -39,7 +39,7 @@ private:
 int main (int argc, char ** argv)
 {
     if (argc != 2) {
-        std::cerr << "Usage: sender \"tcp://host:port\"\n";
+        std::cerr << "Usage: sender \"tcp://*:port\"\n";
         return (-1);
     }
 
