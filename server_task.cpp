@@ -17,7 +17,7 @@ void server_task::start () {
         subscription_.bind("inproc://subscriptions");
 
         std::vector<std::thread> worker_threads;
-        for (int i = 1; i <= number_of_workers_; i++) {
+        for (size_t i = 1; i <= number_of_workers_; i++) {
             auto it = workers.emplace(
                 workers.end(),
                 new worker_task(ctx_, sender_port_, i)
@@ -76,6 +76,8 @@ void server_task::start () {
                             timers_.erase(client);
                             break;
                         }
+
+                    default: break;
                     }
 
                     // broadcast the subscription
@@ -112,7 +114,7 @@ void server_task::start () {
                         if (unpack_client_id(id_msg, id)) {
                             auto it = timers_.find( id );
                             if (it == timers_.end()) {
-                                // The empty timer record is used as a mark of dead subscription.
+                                // The empty timer record marks a dead subscription.
                                 // This item will be removed in expiration checking loop below.
                                 timers_[id] = {0, 0};
                             }
@@ -135,7 +137,11 @@ void server_task::start () {
                 check_at = s_clock() + CHECK_INTERVAL;
                 for (auto it = timers_.begin(); it != timers_.end(); ++it) {
                     if (it->second.expire_at <= now) {
-                        std::cerr << "[S] expire subscription for: " << it->first << " at " << now << "\n";
+                        std::cerr << "[S] ";
+                        if (it->second.expire_at) std::cerr << "expire subscription for: ";
+                        else std::cerr << "notify a dead subcription: ";
+                        std::cerr << it->first << " at " << now << "\n";
+
                         zmq::message_t id_msg(& it->first, sizeof(TClientID));
                         subscription_.send( id_msg, ZMQ_SNDMORE );
                         SubscriptionCommand cmd(TSubscriptionCommand::DELETE);

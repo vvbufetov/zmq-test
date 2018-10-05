@@ -13,6 +13,7 @@ void worker_task::start () {
 
     std::cout << header << "started\n";
 
+    // some statistics for debugging
     uint64_t    ln_in = 0;
     uint64_t    ln_out = 0;
     uint64_t    subs_upd_cnt = 0;
@@ -59,6 +60,8 @@ void worker_task::start () {
                             }
                             break;
                         }
+
+                    default: break;
                     }
                 }
             }
