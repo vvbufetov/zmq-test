@@ -1,5 +1,6 @@
 #include <thread>
 #include <string>
+#include <unistd.h>
 
 #include "zmq.hpp"
 #include "zhelpers.hpp"
@@ -14,11 +15,12 @@
 
 class client_task {
 public:
-    client_task(const std::string connect_string, const std::string filter)
+    client_task(const std::string connect_string, const std::string filter, const int64_t sleep_time)
         : ctx_(1),
           filter_(filter),
           connect_string_(connect_string),
-          retry_(5)
+          retry_(5),
+          sleep_time_(sleep_time)
     {
         client_id_ = static_cast<TClientID>( rand() );
     }
@@ -68,6 +70,7 @@ public:
                     if (msg.size() != 0) {
                         std::string line = std::string(static_cast<char*>(msg.data()), msg.size());
                         std::cout << line << "\n";
+                        if (sleep_time_) s_sleep(sleep_time_);
                     }
                 }
 
@@ -110,19 +113,24 @@ private:
     std::string     connect_string_;
     TClientID       client_id_;
     int             retry_;
+    int64_t         sleep_time_;
 };
 
 int main (int argc, char ** argv)
 {
-    if (argc != 3) {
-        std::cerr << "Usage: client \"tcp://host:port\" \"filter_text\"\n";
+    if (argc < 3 || argc > 4) {
+        std::cerr << "Usage: client \"tcp://host:port\" \"filter_text\" [sleep_time]\n";
         return (-1);
+    }
+    int64_t sleep_time = 0;
+    if (argc == 4) {
+        sleep_time = std::stol(argv[3]);
     }
 
     s_catch_signals();
-    srand( (unsigned) time (NULL) );
+    srand( (unsigned) time (NULL) + ::getpid() );
 
-    client_task ct(argv[1], argv[2]);
+    client_task ct(argv[1], argv[2], sleep_time);
     std::thread t(std::bind(&client_task::start, &ct));
 
     t.join();
