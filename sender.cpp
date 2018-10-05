@@ -14,11 +14,13 @@ public:
 
     void start() {
         frontend_.bind(connect_string_);
+        uint64_t cnt = 0;
         try {
             while (!std::cin.eof() && !s_interrupted) {
                 std::string line;
                 std::getline(std::cin, line);
-                s_send(frontend_, line);
+                if (std::cin.eof()) break;
+                if (s_send(frontend_, line)) cnt ++;
             }
             if (s_interrupted) {
                 frontend_.setsockopt(ZMQ_LINGER,1);
@@ -27,6 +29,7 @@ public:
         catch (std::exception &e) {
             std::cerr << e.what() << "\n";
         }
+        std::cout << "sent: " << cnt << " lines\n";
     }
 
 private:
