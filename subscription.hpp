@@ -452,9 +452,11 @@ void ServerTask<Event,Filter>::start () {
                             else {
                                 it->second.expire_at = now + m_params.subscriptionTimeout;
                             }
-                            // confirm the subscription with a heartbeat
-                            Heartbeat h;
-                            send_packet(m_frontend, id, h);
+                            if (broadcast) {
+                                // confirm the subscription with a heartbeat
+                                Heartbeat h;
+                                send_packet(m_frontend, id, h);
+                            }
                             break;
                         }
                         case Command::DELETE: {
@@ -509,18 +511,20 @@ void ServerTask<Event,Filter>::start () {
             // heartbeat round /////////////////////////////////////////////////
             if (now >= check_at) {
                 check_at = s_clock() + m_params.deliveryTimeout;
-                for (auto it = m_timers.begin(); it != m_timers.end(); ++it) {
+                for (auto it = m_timers.begin(); it != m_timers.end();) {
                     if (it->second.expire_at <= now) {
                         Subscription<Filter> s(Command::DELETE);
                         send_packet(m_subscription, it->first, s);
                         it = m_timers.erase(it);
                     }
-                    else
-                    if (it->second.heartbeat_at <= now) {
-                        it->second.heartbeat_at = now + m_params.heartbeatTimeout
-                                                      - m_params.deliveryTimeout;
-                        Heartbeat hb;
-                        send_packet(m_frontend, it->first, hb);
+                    else {
+                        if (it->second.heartbeat_at <= now) {
+                            it->second.heartbeat_at = now + m_params.heartbeatTimeout
+                                                          - m_params.deliveryTimeout;
+                            Heartbeat hb;
+                            send_packet(m_frontend, it->first, hb);
+                        }
+                        ++ it;
                     }
                 }
             }
@@ -759,10 +763,11 @@ public:
     }
 
     void disconnect (const std::string & address) {
-        for (auto it = m_connects.begin(); it != m_connects.end(); ++it) {
+        for (auto it = m_connects.begin(); it != m_connects.end();) {
             if (it->address == address) {
                 it = m_connects.erase(it);
-            }
+            } else
+                ++ it;
         }
     }
 
@@ -775,20 +780,23 @@ public:
             msec_t now = s_clock();
 
             // check timers on all connections
-            for (auto it = m_connects.begin(); it != m_connects.end(); ++it) {
+            for (auto it = m_connects.begin(); it != m_connects.end();) {
                 // 1. disconnect expired connection
                 if (it->expires_at < now) {
                     // -1 means "no limits", zero means "no reconnects"
                     if (m_params.maxReconnects < 0 || ++it->retries <= m_params.maxReconnects) {
                         it->connect(m_ctx, m_filter);
+                        ++ it;
                     }
                     else
                         it = m_connects.erase(it);
                 }
-                else
-                // 2. update subscription (heartbeat)
-                if (it->update_at <= now)
-                    it->update(now, m_filter);
+                else {
+                    // 2. update subscription (heartbeat)
+                    if (it->update_at <= now)
+                        it->update(now, m_filter);
+                    ++ it;
+                }
             }
 
             if (m_connects.size() == 0)

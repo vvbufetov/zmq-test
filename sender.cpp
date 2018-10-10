@@ -20,7 +20,7 @@ int main (int argc, char ** argv)
     }
 
     subs::SenderParams p;
-    p.maxSubscribers = 2;
+    p.maxSubscribers = 1;
 
     Sender s(argv[1], p);
     while (!std::cin.eof()) {

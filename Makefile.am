@@ -5,7 +5,7 @@ AM_CPPFLAGS = -std=c++11 ${ZMQ_CPPFLAGS} -g -ggdb -Wall -Wextra
 
 AM_LDFLAGS = ${ZMQ_LDFLAGS}
 
-bin_PROGRAMS = sender server client
+bin_PROGRAMS = sender client
 
 ### sender ###
 

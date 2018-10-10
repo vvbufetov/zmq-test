@@ -31,8 +31,9 @@ int main (int argc, char ** argv)
         sleep_time = std::stol(argv[3]);
     }
 
-    subs::ReceiverParams params;
-    subs::Receiver<Event,Filter> receiver(Filter(argv[2]), params);
+    subs::ReceiverParams p;
+    p.maxReconnects = 2;
+    subs::Receiver<Event,Filter> receiver(Filter(argv[2]), p);
     receiver.connect(argv[1]);
 
     while (true) {
