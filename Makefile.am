@@ -13,12 +13,6 @@ sender_SOURCES = sender.cpp
 
 sender_LDADD = ${ZMQ_LIBS}
 
-### server ###
-
-server_SOURCES = server.cpp server_task.cpp worker_task.cpp
-
-server_LDADD = ${ZMQ_LIBS}
-
 ### client ###
 
 client_SOURCES = client.cpp

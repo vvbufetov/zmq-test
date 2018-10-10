@@ -1,43 +1,16 @@
-#include <thread>
-#include <string>
+/**
 
-#include "zmq.hpp"
-#include "zhelpers.hpp"
+    This application reads lines from STDIN and send
+    them to all subscribers on a specified port.
 
-class sender_task {
-public:
-    sender_task(const std::string connect_string)
-        : ctx_(1),
-          connect_string_(connect_string),
-          frontend_(ctx_, ZMQ_PUSH)
-    {}
+*/
+#include "subscription.hpp"
+#include <iostream>
 
-    void start() {
-        frontend_.bind(connect_string_);
-        uint64_t cnt = 0;
-        try {
-            while (!std::cin.eof() && !s_interrupted) {
-                std::string line;
-                std::getline(std::cin, line);
-                if (std::cin.eof()) break;
-                if (s_send(frontend_, line)) cnt ++;
-            }
-            if (s_interrupted) {
-                frontend_.setsockopt(ZMQ_LINGER,1);
-            }
-        }
-        catch (std::exception &e) {
-            std::cerr << e.what() << "\n";
-        }
-        std::cout << "sent: " << cnt << " lines\n";
-    }
-
-private:
-    zmq::context_t ctx_;
-    std::string connect_string_;
-    zmq::socket_t frontend_;
-};
-
+namespace subs = subscription;
+typedef subs::StringEvent Event;
+typedef subs::SubstringFilter Filter;
+typedef subs::Sender<Event,Filter> Sender;
 
 int main (int argc, char ** argv)
 {
@@ -46,11 +19,16 @@ int main (int argc, char ** argv)
         return (-1);
     }
 
-//    s_catch_signals();
+    subs::SenderParams p;
+    p.maxSubscribers = 2;
 
-    sender_task st(argv[1]);
-    std::thread t(std::bind(&sender_task::start, &st));
+    Sender s(argv[1], p);
+    while (!std::cin.eof()) {
+        std::string line;
+        std::getline(std::cin, line);
+        if (std::cin.eof()) break;
+        s.send(Event(line));
+    }
 
-    t.join();
     return 0;
 }
