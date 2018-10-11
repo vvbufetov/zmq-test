@@ -21,6 +21,7 @@ namespace subscription {
 
 typedef int64_t msec_t;
 
+static inline
 msec_t s_clock (void)
 {
     struct timeval tv;
@@ -28,6 +29,7 @@ msec_t s_clock (void)
     return (msec_t) (tv.tv_sec * 1000 + tv.tv_usec / 1000);
 }
 
+static inline
 void s_sleep (msec_t msecs)
 {
     struct timespec t;
@@ -200,6 +202,7 @@ struct Heartbeat {};
 
 /** Sends the empty message as the heartbeat signal.
 */
+static inline
 bool send_packet (zmq::socket_t& socket, Heartbeat&) {
     return socket.send(nullptr,0);
 }
@@ -376,7 +379,8 @@ class ServerTask {
     };
     typedef std::unordered_map<ZmqIdentity,Timer> timers_map_t;
     typedef WorkerTask<Event,Filter> worker_task_t;
-    typedef std::vector<worker_task_t> workers_t;
+    typedef worker_task_t * worker_ptr_t;
+    typedef std::vector<worker_ptr_t> workers_t;
 
 public:
     ServerTask(zmq::context_t& ctx, const std::string listen_port, const SenderParams& params)
@@ -388,8 +392,18 @@ public:
           m_terminated(false)
     {
         for (size_t i = 1; i <= m_params.numberOfWorkers; i++) {
-            m_workers.emplace(m_workers.end(), ctx, i);
+            m_workers.push_back(new worker_task_t(ctx, i));
         }
+    }
+
+    ~ ServerTask ()
+    {
+        for (auto ptr : m_workers) {
+            delete ptr;
+        }
+        m_backend.setsockopt(ZMQ_LINGER,1);
+        m_frontend.setsockopt(ZMQ_LINGER,1);
+        m_subscription.setsockopt(ZMQ_LINGER,1);
     }
 
     void start ();
@@ -415,8 +429,8 @@ void ServerTask<Event,Filter>::start () {
         m_subscription.bind(inproc_subscription_address);
 
         std::vector<std::thread> worker_threads;
-        for (auto it = m_workers.begin(); it != m_workers.end(); ++it) {
-            worker_threads.emplace(worker_threads.end(), std::bind(&worker_task_t::start, it));
+        for (auto ptr : m_workers) {
+            worker_threads.emplace(worker_threads.end(), std::bind(&worker_task_t::start, ptr));
         }
         zmq::pollitem_t items[] = {
             {m_frontend, 0, ZMQ_POLLIN, 0},
@@ -530,8 +544,8 @@ void ServerTask<Event,Filter>::start () {
             }
         }
 
-        for (auto it = m_workers.begin(); it != m_workers.end(); ++it) {
-            it->terminate();
+        for (auto ptr : m_workers) {
+            ptr->terminate();
         }
         for (auto it = worker_threads.begin(); it != worker_threads.end(); ++it) {
             it->join();
@@ -568,6 +582,13 @@ class WorkerTask {
           m_subscription(ctx, ZMQ_SUB)
     {
         m_frontend.setsockopt(ZMQ_IDENTITY, &m_worker_id, sizeof(m_worker_id));
+    }
+
+    ~WorkerTask ()
+    {
+        m_backend.setsockopt(ZMQ_LINGER,1);
+        m_frontend.setsockopt(ZMQ_LINGER,1);
+        m_subscription.setsockopt(ZMQ_LINGER,1);
     }
 
     void start ();
@@ -630,18 +651,18 @@ void WorkerTask<Event,Filter>::start () {
                 Event event(data_msg.data(), data_msg.size());
                 bool data_sent = false;
                 ZmqIdentity prev;
-                for (auto item : m_filters) {
-                    if (item.second.match( event )) {
+                for (auto it = m_filters.begin(); it != m_filters.end(); ++it) {
+                    if (it->second.match( event )) {
                         if (!data_sent) {
                             zmq::message_t copy_msg;
                             copy_msg.copy( &data_msg );
                             m_frontend.send( copy_msg, ZMQ_SNDMORE );
                             data_sent = true;
-                            prev = item.first;
+                            prev = it->first;
                         } else {
                             zmq::message_t id_msg(prev.data(), prev.size());
                             m_frontend.send( id_msg, ZMQ_SNDMORE );
-                            prev = item.first;
+                            prev = it->first;
                         }
                     }
                 }
@@ -691,7 +712,8 @@ class Receiver {
         int             retries;
 
         Connection (zmq::context_t & ctx, const std::string& address_, const msec_t exp_int, const msec_t upd_int )
-            : address(address_),
+            : p_socket(nullptr),
+              address(address_),
               expiration_interval(exp_int),
               update_interval(upd_int),
               retries(0)
